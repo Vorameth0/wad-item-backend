@@ -1,33 +1,40 @@
 import { NextResponse } from "next/server";
 import { getClientPromise } from "@/lib/mongodb";
+import bcrypt from "bcryptjs";
 
 export async function POST(req: Request) {
-  const { username, password } = await req.json();
+  try {
+    const body = await req.json();
+    const { username, password } = body;
 
-  if (!username || !password) {
+    if (!username || !password) {
+      return NextResponse.json(
+        { message: "Missing username or password" },
+        { status: 400 }
+      );
+    }
+
+    const client = await getClientPromise();
+    const db = client.db("wad-01");
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await db.collection("user").insertOne({
+      username,
+      password: hashedPassword,
+      status: "ACTIVE",
+    });
+
     return NextResponse.json(
-      { message: "Username and password required" },
+      { id: result.insertedId },
+      { status: 200 }
+    );
+  } catch (error: unknown) {
+    console.error(error);
+
+    return NextResponse.json(
+      { message: "Duplicate username or server error" },
       { status: 400 }
     );
   }
-
-  const client = await getClientPromise();
-  const db = client.db("wad-01");
-  const user = db.collection("user");
-
-  const exists = await user.findOne({ username });
-  if (exists) {
-    return NextResponse.json(
-      { message: "Username already exists" },
-      { status: 409 }
-    );
-  }
-
-  await user.insertOne({
-    username,
-    password, // plain text (ตรงกับ DB ที่คุณมี)
-    createdAt: new Date(),
-  });
-
-  return NextResponse.json({ message: "Register success" });
 }
